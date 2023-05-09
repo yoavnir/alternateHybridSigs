@@ -1,0 +1,258 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE rfc [
+  <!ENTITY nbsp    "&#160;">
+  <!ENTITY zwsp   "&#8203;">
+  <!ENTITY nbhy   "&#8209;">
+  <!ENTITY wj     "&#8288;">
+]>
+<?rfc toc="yes"?>
+<!-- generate a table of contents -->
+<?rfc symrefs="yes"?>
+<!-- use anchors instead of numbers for references -->
+<?rfc sortrefs="yes" ?>
+<!-- alphabetize the references -->
+<?rfc compact="yes" ?>
+<!-- conserve vertical whitespace -->
+<?rfc subcompact="no" ?>
+<!-- but keep a blank line between list items -->
+<rfc xmlns:xi="http://www.w3.org/2001/XInclude" category="std" docName="draft-ietf-tls-tlsflags-06" ipr="trust200902" consensus="true" obsoletes="" updates="" submissionType="IETF" xml:lang="en" tocInclude="true" symRefs="true" sortRefs="true" version="3">
+  <!-- xml2rfc v2v3 conversion 3.17.1 -->
+  <front>
+    <title abbrev="AltCompSig">A Hybrid Signature Method with Strong Non-Separability</title>
+    <seriesInfo name="Internet-Draft" value="draft-nir-lamps-altcompsigs-00"/>
+    <author initials="Y." surname="Nir" fullname="Yoav Nir">
+      <organization>Dell Technologies</organization>
+      <address>
+        <postal>
+          <street>9 Andrei Sakharov St</street>
+          <city>Haifa</city>
+          <code>3190500</code>
+          <country>Israel</country>
+        </postal>
+        <email>ynir.ietf@gmail.com</email>
+      </address>
+    </author>
+    <date/>
+    <area>Security</area>
+    <workgroup>LAMPS</workgroup>
+    <abstract>
+      <t> This document presents an alternative scheme of composing classic and post-quantum signature
+                algorithms with different security properties. This scheme produces signatures with strong 
+                non-separability (SNS) at the cost of breaking backward compatibility with legacy 
+                cryptographic hardware.</t>
+    </abstract>
+  </front>
+  <middle>
+    <section anchor="intro" numbered="true" toc="default">
+      <name>Introduction</name>
+      <t> With the looming threat of cryptographically relevant quantum computers (CRQC) breaking 
+                existing public key constructs such as digital signatures, the world in general and the IETF
+                in particular are looking to transition to so-called post-quantum algorithms, algorithms that 
+                are thought to be secure against a cryptanalytic attack by a quantum computer.</t>
+      <t> The National Institute of Standards and Technology (NIST) has been running a project for 
+                selecting post-quantum algorithms since 2016 (<xref target="NIST-PQC" format="default"/>). This project is not 
+                complete at the time of this writing. It has produced several finalists including 
+                Crystals-Dilithium (<xref target="Dilithium" format="default"/>), Falcon, and more.</t>
+      <t> There is, however, concern about deploying these new algorithms as full replacements for the 
+                existing (or "classic") algorithms. On the one had there is the fear that researchers or 
+                nation-state adversaries will produce a CRQC that will allow them to break the classic 
+                algorithms such as RSA, ECDSA, and EdDSA. On the other hand, there is still doubt about the
+                security of the new algorithms. This doubt is well-founded: One of the candidate algorithms, 
+                SIKE, was broken in late stages of the competition <xref target="SIKE-BREAK" format="default"/>.</t>
+      <t> To minimize the risks or relying on a single algorithm, there are some proposals for combining
+                two or more algorithms, typically a classic algorithm and a post-quantum algorithm, such that
+                all of the algorithms are used to create the signature, and some or all of them are used to 
+                verify the signature. This has the advantage that unless the adversary is able to break all 
+                of the algorithms, a verifier who uses all of the algorithms will not be fooled.  One such 
+                proposal is <xref target="I-D.ounsworth-pq-composite-sigs" format="default"/>.</t>
+      <t> Most such proposals involve independently signing with the several algorithms, each having 
+                their own private/public key pair. With these schemes the private key is a concatenation or a
+                vector of the private keys of the several algorithms, and similarly the public key is a 
+                vector of the public keys, and the signature is a vector of independent signatures.  A 
+                signature like that is said to be parallel, as there is no dependency between the signature
+                algorithms.</t>
+      <t> This draft proposes alternate schemes where specific algorithms are combined to create 
+                signatures that are non-separable, meaning that it is not possible to verify the signature 
+                using just one algorithm.  This is based on the article A Note on Hybrid Signature Schemes by
+                Bindel and Hale (<xref target="Bindel23" format="default"/>).</t>
+      <section anchor="mustshouldmay" numbered="true" toc="default">
+        <name>Requirements and Other Notation</name>
+        <t> The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+                    "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
+                    BCP 14 <xref target="RFC2119" format="default"/> <xref target="RFC8174" format="default"/> when, and only when, they appear
+                    in all capitals, as shown here.</t>
+        <t> A hybrid signature is a signature that is created using more than one algorithm, typically
+                    at least one classic algorithm and at least one post-quantum algorithm.</t>
+      </section>
+      <section anchor="def-sns" numbered="true" toc="default">
+        <name>Strong Non-Separability</name>
+        <t> Non-separability (NS) is a property of hybrid signatures. With non-separable signatures,
+                    an adversary cannot remove one of the signatures (typically, the one that is not broken)
+                    forcing the verifier to rely only on the broken algorithm. Such an attempt would be 
+                    detected.</t>
+        <t> Strong Non-Separability (SNS) is a stronger property, where an adversary cannot convert 
+                    an input hybrid signature into a single algorithm signature that will verify correctly.</t>
+        <t> Simultaneous Verification (SV) is an even stronger property, that makes it impossible 
+                    for the verifier to quit the verification after using just one algorithm. The hybrid 
+                    signatures presented in this draft all require SV.</t>
+      </section>
+      <section anchor="def-bc" numbered="true" toc="default">
+        <name>Backward Compatibility</name>
+        <t> Backward Compatibility for hybrid signatures means that old verifying hardware or software
+                    that verifies the signature of one algorithm or the other can be used to verify the 
+                    single-algorithm component of the hybrid signature. So the EdDSA component of a 
+                    Dilithium-EdDSA hybrid signature can be verified using an EdDSA verifier.</t>
+        <t> SNS and backward compatibility are mutually exclusive, meaning that to gain SNS, we have
+                    to give up on having backward compatibility.</t>
+      </section>
+    </section>
+    <section anchor="schemes" numbered="true" toc="default">
+      <name>Hybrid Schemes</name>
+      <section anchor="fsfs" numbered="true" toc="default">
+        <name>Fiat-Shamir and Fiat-Shamit</name>
+        <t> TODO: A paragraph explaining what is a Fiat-Shamir signature.</t>
+        <t> TODO: Say that some post-quantum algorithms (like Dilithium) and some classic algorithms (like ECDSA and EdDSA) are FS.</t>
+        <t> TODO: Describe the FS-FS construction.</t>
+      </section>
+      <section anchor="fsrsa" numbered="true" toc="default">
+        <name>Fiat-Shamir and RSA</name>
+        <t> TODO: A paragraph explaining that RSA is popular, and that Dilithium-RSA is desirable</t>
+        <t> TODO: Add the FS-RSA construction (but not in draft -00)</t>
+      </section>
+      <section anchor="falconfs" numbered="true" toc="default">
+        <name>Fiat-Shamir and Falcon</name>
+        <t> TODO: Add the FS-Falcon construction (but not in draft -00)</t>
+      </section>
+      <section anchor="falconrsa" numbered="true" toc="default">
+        <name>RSA and Falcon</name>
+        <t> TODO: Add the RSA-Falcon construction (but not in draft -00)</t>
+      </section>
+      <section anchor="iana" numbered="true" toc="default">
+        <name>IANA Considerations</name>
+        <t> To Be Added.  We need at least OIDs for the combinations above.</t>
+      </section>
+    </section>
+    <section anchor="compare" numbered="true" toc="default">
+      <name>Comparison with Other Proposals</name>
+      <t> TODO: Add here a discussion of the differences between this proposal and draft-ounsworth.  
+		        Need to cover both advantages (SNS, SV) and disadvantages: backward compatibility.</t>
+    </section>
+    <section anchor="sec" numbered="true" toc="default">
+      <name>Security Considerations</name>
+      <t> Security considerations appear in this document, specifically in <xref target="def-sns" format="default"/>, 
+                when discussing SNS. Proofs of the security of the constructions described in 
+                <xref target="schemes" format="default"/> are given in the article.</t>
+    </section>
+  </middle>
+  <back>
+    <references>
+      <name>References</name>
+      <references>
+        <name>Normative References</name>
+        <reference anchor="RFC2119" target="https://www.rfc-editor.org/info/rfc2119" xml:base="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml">
+          <front>
+            <title>Key words for use in RFCs to Indicate Requirement Levels</title>
+            <author fullname="S. Bradner" initials="S." surname="Bradner"/>
+            <date month="March" year="1997"/>
+            <abstract>
+              <t>In many standards track documents several words are used to signify the requirements in the specification.  These words are often capitalized.  This document defines these words as they should be interpreted in IETF documents.  This document specifies an Internet Best Current Practices for the Internet Community, and requests discussion and suggestions for improvements.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="BCP" value="14"/>
+          <seriesInfo name="RFC" value="2119"/>
+          <seriesInfo name="DOI" value="10.17487/RFC2119"/>
+        </reference>
+        <reference anchor="RFC8174" target="https://www.rfc-editor.org/info/rfc8174" xml:base="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml">
+          <front>
+            <title>Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words</title>
+            <author fullname="B. Leiba" initials="B." surname="Leiba"/>
+            <date month="May" year="2017"/>
+            <abstract>
+              <t>RFC 2119 specifies common key words that may be used in protocol specifications.  This document aims to reduce the ambiguity by clarifying that only UPPERCASE usage of the key words have the defined special meanings.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="BCP" value="14"/>
+          <seriesInfo name="RFC" value="8174"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8174"/>
+        </reference>
+      </references>
+      <references>
+        <name>Informative References</name>
+        <reference anchor="I-D.ounsworth-pq-composite-sigs" target="https://datatracker.ietf.org/doc/html/draft-ounsworth-pq-composite-sigs-08" xml:base="https://bib.ietf.org/public/rfc/bibxml3/reference.I-D.ounsworth-pq-composite-sigs.xml">
+          <front>
+            <title>Composite Signatures For Use In Internet PKI</title>
+            <author fullname="Mike Ounsworth" initials="M." surname="Ounsworth">
+              <organization>Entrust Limited</organization>
+            </author>
+            <author fullname="John Gray" initials="J." surname="Gray">
+              <organization>Entrust Limited</organization>
+            </author>
+            <author fullname="Massimiliano Pala" initials="M." surname="Pala">
+              <organization>CableLabs</organization>
+            </author>
+            <date day="13" month="March" year="2023"/>
+            <abstract>
+              <t>The migration to post-quantum cryptography is unique in the history of modern digital cryptography in that neither the old outgoing nor the new incoming algorithms are fully trusted to protect data for the required data lifetimes. The outgoing algorithms, such as RSA and elliptic curve, may fall to quantum cryptanalysis, while the incoming post-quantum algorithms face uncertainty about both the underlying mathematics as well as hardware and software implementations that have not had sufficient maturing time to rule out classical cryptanalytic attacks and implementation bugs. Cautious implementers may wish to layer cryptographic algorithms such that an attacker would need to break all of them in order to compromise the data being protected using either a Post-Quantum / Traditional Hybrid, Post-Quantum / Post-Quantum Hybrid, or combinations thereof. This document, and its companions, defines a specific instantiation of hybrid paradigm called "composite" where multiple cryptographic algorithms are combined to form a single key, signature, or key encapsulation mechanism (KEM) such that they can be treated as a single atomic object at the protocol level. This document defines the structures CompositeSignatureValue, and CompositeSignatureParams, which are sequences of the respective structure for each component algorithm. The explicit variant is defined which allows for a set of signature algorithm identifier OIDs to be registered together as an explicit composite signature algorithm and assigned an OID. The generic composite variant is also defined which allows arbitrary combinations of signature algorithms to be used in the CompositeSignatureValue and CompositeSignatureParams structures without needing the combination to be pre-registered or pre-agreed. This document is intended to be coupled with corresponding documents that define the structure and semantics of composite public and private keys and encryption [I-D.ounsworth-pq-composite-keys], however may also be used with non-composite keys, such as when a protocol combines multiple certificates into a single cryptographic operation.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="Internet-Draft" value="draft-ounsworth-pq-composite-sigs-08"/>
+        </reference>
+        <reference anchor="Bindel23" target="https://eprint.iacr.org/2023/423.pdf">
+          <front>
+            <title>A Note on Hybrid Signature Schemes</title>
+            <author initials="N." surname="Bindel" fullname="Nina Bindel">
+              <organization>SandboxAQ</organization>
+            </author>
+            <author initials="B." surname="Hale" fullname="Britta Hale">
+              <organization>Naval Postgraduate School</organization>
+            </author>
+            <date year="2023"/>
+          </front>
+        </reference>
+        <reference anchor="NIST-PQC" target="https://csrc.nist.gov/Projects/post-quantum-cryptography">
+          <front>
+            <title>Post-Quantum Cryptography Project</title>
+            <author initials="" surname="National Institute of Standards and Technology (NIST)" fullname="">
+              <organization/>
+            </author>
+            <date year="2016" month="12" day="20"/>
+          </front>
+        </reference>
+        <reference anchor="Dilithium" target="https://pq-crystals.org/dilithium/data/dilithium-specification-round3-20210208.pdf">
+          <front>
+            <title>CRYSTALS-Dilithium Algorithm Specifications and Supporting Documentation</title>
+            <author initials="S." surname="Bai" fullname="S. Bai">
+				</author>
+            <author initials="L." surname="Ducas" fullname="L. Ducas">
+				</author>
+            <author initials="T." surname="Lepoint" fullname="T. Lepoint">
+				</author>
+            <author initials="V." surname="Lyubashevsky" fullname="V. Lyubashevsky">
+				</author>
+            <author initials="P." surname="Schwabe" fullname="P. Schwabe">
+				</author>
+            <author initials="G." surname="Seiler" fullname="G. Seiler">
+				</author>
+            <author initials="D." surname="Stehle" fullname="D. Stehle">
+				</author>
+            <date year="2021"/>
+          </front>
+        </reference>
+        <reference anchor="SIKE-BREAK" target="https://eprint.iacr.org/2022/975.pdf">
+          <front>
+            <title>An efficient key recovery attack on SIDH</title>
+            <author initials="W." surname="Castryck" fullname="Wouter Castryck"/>
+            <author initials="T." surname="Decru" fullname="Thomas Decru"/>
+            <date year="2022"/>
+          </front>
+        </reference>
+      </references>
+    </references>
+    <section anchor="changelog" numbered="true" toc="default">
+      <name>Change Log</name>
+      <t> RFC EDITOR: PLEASE REMOVE THIS SECTION AS IT IS ONLY MEANT TO AID THE WORKING GROUP IN TRACKING
+                CHANGES TO THIS DOCUMENT.</t>
+      <t> draft-nir-lamps-altcompsigs-00 - first version.</t>
+    </section>
+  </back>
+</rfc>
