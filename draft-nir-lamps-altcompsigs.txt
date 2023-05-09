@@ -1,0 +1,336 @@
+
+
+
+
+LAMPS                                                             Y. Nir
+Internet-Draft                                         Dell Technologies
+Intended status: Standards Track                              9 May 2023
+Expires: 10 November 2023
+
+
+         A Hybrid Signature Method with Strong Non-Separability
+                       draft-ietf-tls-tlsflags-06
+
+Abstract
+
+   This document presents an alternative scheme of composing classic and
+   post-quantum signature algorithms with different security properties.
+   This scheme produces signatures with strong non-separability (SNS) at
+   the cost of breaking backward compatibility with legacy cryptographic
+   hardware.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 10 November 2023.
+
+Copyright Notice
+
+   Copyright (c) 2023 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+
+
+
+Nir                     Expires 10 November 2023                [Page 1]
+
+Internet-Draft                 AltCompSig                       May 2023
+
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+     1.1.  Requirements and Other Notation . . . . . . . . . . . . .   3
+     1.2.  Strong Non-Separability . . . . . . . . . . . . . . . . .   3
+     1.3.  Backward Compatibility  . . . . . . . . . . . . . . . . .   4
+   2.  Hybrid Schemes  . . . . . . . . . . . . . . . . . . . . . . .   4
+     2.1.  Fiat-Shamir and Fiat-Shamit . . . . . . . . . . . . . . .   4
+     2.2.  Fiat-Shamir and RSA . . . . . . . . . . . . . . . . . . .   4
+     2.3.  Fiat-Shamir and Falcon  . . . . . . . . . . . . . . . . .   4
+     2.4.  RSA and Falcon  . . . . . . . . . . . . . . . . . . . . .   4
+     2.5.  IANA Considerations . . . . . . . . . . . . . . . . . . .   4
+   3.  Comparison with Other Proposals . . . . . . . . . . . . . . .   4
+   4.  Security Considerations . . . . . . . . . . . . . . . . . . .   5
+   5.  References  . . . . . . . . . . . . . . . . . . . . . . . . .   5
+     5.1.  Normative References  . . . . . . . . . . . . . . . . . .   5
+     5.2.  Informative References  . . . . . . . . . . . . . . . . .   5
+   Appendix A.  Change Log . . . . . . . . . . . . . . . . . . . . .   6
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .   6
+
+1.  Introduction
+
+   With the looming threat of cryptographically relevant quantum
+   computers (CRQC) breaking existing public key constructs such as
+   digital signatures, the world in general and the IETF in particular
+   are looking to transition to so-called post-quantum algorithms,
+   algorithms that are thought to be secure against a cryptanalytic
+   attack by a quantum computer.
+
+   The National Institute of Standards and Technology (NIST) has been
+   running a project for selecting post-quantum algorithms since 2016
+   ([NIST-PQC]).  This project is not complete at the time of this
+   writing.  It has produced several finalists including Crystals-
+   Dilithium ([Dilithium]), Falcon, and more.
+
+   There is, however, concern about deploying these new algorithms as
+   full replacements for the existing (or "classic") algorithms.  On the
+   one had there is the fear that researchers or nation-state
+   adversaries will produce a CRQC that will allow them to break the
+   classic algorithms such as RSA, ECDSA, and EdDSA.  On the other hand,
+   there is still doubt about the security of the new algorithms.  This
+   doubt is well-founded: One of the candidate algorithms, SIKE, was
+   broken in late stages of the competition [SIKE-BREAK].
+
+   To minimize the risks or relying on a single algorithm, there are
+   some proposals for combining two or more algorithms, typically a
+   classic algorithm and a post-quantum algorithm, such that all of the
+   algorithms are used to create the signature, and some or all of them
+
+
+
+Nir                     Expires 10 November 2023                [Page 2]
+
+Internet-Draft                 AltCompSig                       May 2023
+
+
+   are used to verify the signature.  This has the advantage that unless
+   the adversary is able to break all of the algorithms, a verifier who
+   uses all of the algorithms will not be fooled.  One such proposal is
+   [I-D.ounsworth-pq-composite-sigs].
+
+   Most such proposals involve independently signing with the several
+   algorithms, each having their own private/public key pair.  With
+   these schemes the private key is a concatenation or a vector of the
+   private keys of the several algorithms, and similarly the public key
+   is a vector of the public keys, and the signature is a vector of
+   independent signatures.  A signature like that is said to be
+   parallel, as there is no dependency between the signature algorithms.
+
+   This draft proposes alternate schemes where specific algorithms are
+   combined to create signatures that are non-separable, meaning that it
+   is not possible to verify the signature using just one algorithm.
+   This is based on the article A Note on Hybrid Signature Schemes by
+   Bindel and Hale ([Bindel23]).
+
+1.1.  Requirements and Other Notation
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+   document are to be interpreted as described in BCP 14 [RFC2119]
+   [RFC8174] when, and only when, they appear in all capitals, as shown
+   here.
+
+   A hybrid signature is a signature that is created using more than one
+   algorithm, typically at least one classic algorithm and at least one
+   post-quantum algorithm.
+
+1.2.  Strong Non-Separability
+
+   Non-separability (NS) is a property of hybrid signatures.  With non-
+   separable signatures, an adversary cannot remove one of the
+   signatures (typically, the one that is not broken) forcing the
+   verifier to rely only on the broken algorithm.  Such an attempt would
+   be detected.
+
+   Strong Non-Separability (SNS) is a stronger property, where an
+   adversary cannot convert an input hybrid signature into a single
+   algorithm signature that will verify correctly.
+
+   Simultaneous Verification (SV) is an even stronger property, that
+   makes it impossible for the verifier to quit the verification after
+   using just one algorithm.  The hybrid signatures presented in this
+   draft all require SV.
+
+
+
+
+Nir                     Expires 10 November 2023                [Page 3]
+
+Internet-Draft                 AltCompSig                       May 2023
+
+
+1.3.  Backward Compatibility
+
+   Backward Compatibility for hybrid signatures means that old verifying
+   hardware or software that verifies the signature of one algorithm or
+   the other can be used to verify the single-algorithm component of the
+   hybrid signature.  So the EdDSA component of a Dilithium-EdDSA hybrid
+   signature can be verified using an EdDSA verifier.
+
+   SNS and backward compatibility are mutually exclusive, meaning that
+   to gain SNS, we have to give up on having backward compatibility.
+
+2.  Hybrid Schemes
+
+2.1.  Fiat-Shamir and Fiat-Shamit
+
+   TODO: A paragraph explaining what is a Fiat-Shamir signature.
+
+   TODO: Say that some post-quantum algorithms (like Dilithium) and some
+   classic algorithms (like ECDSA and EdDSA) are FS.
+
+   TODO: Describe the FS-FS construction.
+
+2.2.  Fiat-Shamir and RSA
+
+   TODO: A paragraph explaining that RSA is popular, and that Dilithium-
+   RSA is desirable
+
+   TODO: Add the FS-RSA construction (but not in draft -00)
+
+2.3.  Fiat-Shamir and Falcon
+
+   TODO: Add the FS-Falcon construction (but not in draft -00)
+
+2.4.  RSA and Falcon
+
+   TODO: Add the RSA-Falcon construction (but not in draft -00)
+
+2.5.  IANA Considerations
+
+   To Be Added.  We need at least OIDs for the combinations above.
+
+3.  Comparison with Other Proposals
+
+   TODO: Add here a discussion of the differences between this proposal
+   and draft-ounsworth.  Need to cover both advantages (SNS, SV) and
+   disadvantages: backward compatibility.
+
+
+
+
+
+Nir                     Expires 10 November 2023                [Page 4]
+
+Internet-Draft                 AltCompSig                       May 2023
+
+
+4.  Security Considerations
+
+   Security considerations appear in this document, specifically in
+   Section 1.2, when discussing SNS.  Proofs of the security of the
+   constructions described in Section 2 are given in the article.
+
+5.  References
+
+5.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/info/rfc2119>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/info/rfc8174>.
+
+5.2.  Informative References
+
+   [Bindel23] Bindel, N. and B. Hale, "A Note on Hybrid Signature
+              Schemes", 2023, <https://eprint.iacr.org/2023/423.pdf>.
+
+   [Dilithium]
+              Bai, S., Ducas, L., Lepoint, T., Lyubashevsky, V.,
+              Schwabe, P., Seiler, G., and D. Stehle, "CRYSTALS-
+              Dilithium Algorithm Specifications and Supporting
+              Documentation", 2021, <https://pq-
+              crystals.org/dilithium/data/dilithium-specification-
+              round3-20210208.pdf>.
+
+   [I-D.ounsworth-pq-composite-sigs]
+              Ounsworth, M., Gray, J., and M. Pala, "Composite
+              Signatures For Use In Internet PKI", Work in Progress,
+              Internet-Draft, draft-ounsworth-pq-composite-sigs-08, 13
+              March 2023, <https://datatracker.ietf.org/doc/html/draft-
+              ounsworth-pq-composite-sigs-08>.
+
+   [NIST-PQC] National Institute of Standards and Technology (NIST),
+              "Post-Quantum Cryptography Project", 20 December 2016,
+              <https://csrc.nist.gov/Projects/post-quantum-
+              cryptography>.
+
+   [SIKE-BREAK]
+              Castryck, W. and T. Decru, "An efficient key recovery
+              attack on SIDH", 2022,
+              <https://eprint.iacr.org/2022/975.pdf>.
+
+
+
+Nir                     Expires 10 November 2023                [Page 5]
+
+Internet-Draft                 AltCompSig                       May 2023
+
+
+Appendix A.  Change Log
+
+   RFC EDITOR: PLEASE REMOVE THIS SECTION AS IT IS ONLY MEANT TO AID THE
+   WORKING GROUP IN TRACKING CHANGES TO THIS DOCUMENT.
+
+   draft-nir-lamps-altcompsigs-00 - first version.
+
+Author's Address
+
+   Yoav Nir
+   Dell Technologies
+   9 Andrei Sakharov St
+   Haifa 3190500
+   Israel
+   Email: ynir.ietf@gmail.com
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Nir                     Expires 10 November 2023                [Page 6]
